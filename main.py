@@ -106,7 +106,6 @@ class Terrain(object):
                 a = 4
 
             color = self.color_choice[a]
-            # print(color["R"])
             for m in range(self.nfaces - 1):
                 yoff = m * self.nfaces
                 for n in range(self.nfaces - 1):
