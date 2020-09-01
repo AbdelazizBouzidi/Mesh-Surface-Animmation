@@ -1,0 +1,129 @@
+from operator import le
+from numpy.core.fromnumeric import size
+from numpy.core.numeric import nan
+from pyqtgraph.Qt import QtCore, QtGui
+import pyqtgraph.opengl as gl
+import pyqtgraph as pg
+import numpy as np
+import matplotlib.pyplot as plt
+import sys
+import time
+import wave
+import random
+np.set_printoptions(threshold=sys.maxsize)
+
+
+class Visualizer(object):
+    def __init__(self, song):
+        self.traces = dict()
+        self.app = QtGui.QApplication(sys.argv)
+        self.w = gl.GLViewWidget()
+        # self.w.opts['distance'] = 40
+        self.w.setWindowTitle('pyqtgraph example: GLLinePlotItem')
+        self.w.setGeometry(0, 110, 1920, 1080)
+        self.w.setCameraPosition(pos=QtGui.QVector3D(-5, 1000, 0),
+                                 distance=50, elevation=19, azimuth=100)
+        self.w.show()
+        self.t = 0
+        self.phase = 0
+        self.lines = 5
+        self.points = 100000
+        self.y = np.linspace(0, 1030, self.points)
+        self.x = np.linspace(0-25, 25+26, self.lines)
+        self.beatAmps, self.beatNum = self.BeatMaker(song)
+        self.beatIndexAmp = 0
+        self.beatIndexNum = 0
+        for i in range(0, self.lines, 1):
+
+            x = self.x[i] + np.zeros(len(self.y))
+            pts = np.vstack(
+                [x, self.y, np.zeros(self.points)]).transpose()
+
+            self.traces[i] = gl.GLLinePlotItem(
+                pos=pts,
+                color=pg.glColor((i, self.lines * 1.3)),
+                width=(0.8+(0.5)*(4-i)),
+                antialias=True,
+
+            )
+            self.w.addItem(self.traces[i])
+
+    def start(self):
+        if (sys.flags.interactive != 1) or not hasattr(QtCore, 'PYQT_VERSION'):
+            QtGui.QApplication.instance().exec_()
+
+    def set_plotdata(self, name, points, color, width):
+        self.traces[name].setData(pos=points, color=color, width=width)
+
+    def update(self):
+        stime = time.time()
+        for i in range(0, self.lines, 1):
+            if i <= self.beatNum[self.beatIndexNum]:
+                d = 500*self.beatAmps[self.beatIndexAmp]
+                h = 15*self.beatAmps[self.beatIndexAmp]
+                f = 1/(abs(self.beatAmps[self.beatIndexAmp])+1)
+                T = 1/f
+                lambdaa = 900*T
+                x = np.zeros(self.points)
+                for n in range(1, 3):
+                    x[1:-1] = x[1:-1] + ((2*h*len(self.y)**2)/(np.pi**2*(n)**2*d*(len(self.y)-d))) *\
+                        np.sin(n*np.pi*d/len(self.y)) * \
+                        np.sin(((2*np.pi)/lambdaa)*self.y[1:-1]) * \
+                        np.cos((2*np.pi/f)*self.t)
+                x[0] = 0
+                x[-1] = 0
+            else:
+                x = np.zeros(self.points)
+
+            j = random.randint(0, 4)
+            x = self.x[j] + x
+
+            pts = np.vstack(
+                [x, self.y, np.zeros(self.points)]).transpose()
+
+            self.traces[j].setData(
+                pos=pts,
+                color=pg.glColor(
+                    ((j+3)*self.beatNum[self.beatIndexNum], self.lines * 1.2)),
+                antialias=True,
+            )
+        self.w.grabFrameBuffer().save("frames40/"+str(self.beatIndexAmp)+'.png')
+        self.t += 1/60
+        self.beatIndexAmp += 1
+        if self.beatIndexAmp % 60 == 0:
+            self.beatIndexNum += 1
+
+        print('{:.0f} FPS'.format(1 / (time.time() - stime)))
+
+    def animation(self):
+        timer = QtCore.QTimer()
+        timer.timeout.connect(self.update)
+        timer.start(10)
+        self.start()
+
+    def BeatMaker(self, song):
+        spf = wave.open(song, "r")
+        signal = spf.readframes(-1)
+        signal = np.frombuffer(signal, "int16")
+        signal = signal.astype(float)
+        fs = spf.getframerate()
+        beatsAmps = [signal[t]
+                     for t in range(0, len(signal), (2*fs)//30)]
+        beatsNum = [np.sum(np.absolute(signal[j:j+2*fs]))/len(signal[j:j+2*fs])
+                    for j in range(0, len(signal)-2*fs,  2*fs)]
+        # beatsNum[0] = 0
+        # beatsNum[1] = 0
+        plt.plot(beatsAmps/np.max(beatsAmps))
+        plt.grid()
+        plt.show()
+        plt.plot(np.round(4*(beatsNum/np.max(beatsNum))))
+        plt.grid()
+        plt.show()
+        return beatsAmps/np.max(beatsAmps), np.round(4*(beatsNum/np.max(beatsNum)))
+
+
+# Start event loop.
+if __name__ == '__main__':
+    v = Visualizer(
+        "INTERNAL FLIGHT - Estas Tonne - WINNER Cosmic Angel Short Film Award 2015.wav")
+    v.animation()
